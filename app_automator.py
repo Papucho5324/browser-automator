@@ -12,6 +12,8 @@ from selenium.webdriver.edge.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+# --- CAMBIO 1: IMPORTAR KEYS PARA PODER DAR ENTER ---
+from selenium.webdriver.common.keys import Keys 
 
 class AutomationApp:
     def __init__(self, root):
@@ -20,7 +22,6 @@ class AutomationApp:
         self.root.geometry("850x750")
 
         # --- VARIABLES ---
-        # Ruta de Edge (Editable por si cambia de PC)
         self.edge_path_var = tk.StringVar(value=r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
         self.user_data_var = tk.StringVar(value=r"C:\EdgeAutomationProfile")
         
@@ -44,13 +45,11 @@ class AutomationApp:
         lbl_instruccion = ttk.Label(frame_browser, text="1. Inicia el navegador. 2. Realiza el Login manual. 3. No cierres esa ventana.", foreground="red")
         lbl_instruccion.pack(anchor="w", pady=(0, 5))
 
-        # Configuración avanzada de rutas (ocultable si se desea, pero útil tenerla)
         frame_paths = ttk.Frame(frame_browser)
         frame_paths.pack(fill="x", pady=2)
         ttk.Label(frame_paths, text="Ruta Edge:").pack(side="left")
         ttk.Entry(frame_paths, textvariable=self.edge_path_var, width=40).pack(side="left", padx=5)
         
-        # Botón para lanzar Edge
         btn_launch = ttk.Button(frame_browser, text="🚀 ABRIR EDGE EN MODO SEGURO (DEBUG)", command=self.launch_browser_process)
         btn_launch.pack(fill="x", pady=5)
 
@@ -65,7 +64,6 @@ class AutomationApp:
         frame_config = ttk.LabelFrame(self.root, text="2. Configuración de Inserción", padding=10)
         frame_config.pack(fill="x", padx=10, pady=5)
 
-        # Grid de configuración
         ttk.Label(frame_config, text="Columna ID/Sno:").grid(row=0, column=0, sticky="w", padx=5)
         self.combo_columns = ttk.Combobox(frame_config, textvariable=self.column_var, state="readonly", width=15)
         self.combo_columns.grid(row=0, column=1, sticky="w", padx=5)
@@ -102,28 +100,17 @@ class AutomationApp:
         self.btn_run = ttk.Button(frame_action, text="▶ EJECUTAR AUTOMATIZACIÓN", command=self.start_thread)
         self.btn_run.pack(fill="x", ipady=5)
         
-        # Log
         self.log_text = tk.Text(self.root, height=6, state="disabled", bg="#1e1e1e", fg="#00ff00", font=("Consolas", 9))
         self.log_text.pack(fill="x", padx=10, pady=5)
 
     def launch_browser_process(self):
-        """Lanza MS Edge con el puerto de depuración abierto"""
         edge_exe = self.edge_path_var.get()
         user_data = self.user_data_var.get()
-        
         if not os.path.exists(edge_exe):
             messagebox.showerror("Error", f"No se encuentra Edge en: {edge_exe}")
             return
-
-        # Comando exacto solicitado
-        cmd = [
-            edge_exe, 
-            "--remote-debugging-port=9222", 
-            f"--user-data-dir={user_data}"
-        ]
-        
+        cmd = [edge_exe, "--remote-debugging-port=9222", f"--user-data-dir={user_data}"]
         try:
-            # Popen lanza el proceso sin bloquear la interfaz de Python
             subprocess.Popen(cmd)
             self.log(f"Navegador lanzado en puerto 9222.\nPerfil: {user_data}")
             self.log("Por favor, inicia sesión en la ventana que se abrió antes de continuar.")
@@ -149,11 +136,9 @@ class AutomationApp:
     def preview_data(self, event=None):
         if self.df is None: return
         for i in self.tree.get_children(): self.tree.delete(i)
-        
         col = self.column_var.get()
         if col in self.df.columns:
             start_idx = max(0, self.start_row_var.get() - 2)
-            # Mostramos una muestra
             subset = self.df.iloc[start_idx:].head(50) 
             for idx, row in subset.iterrows():
                 self.tree.insert("", "end", values=(idx + 2, row[col]))
@@ -175,19 +160,12 @@ class AutomationApp:
     def run_automation(self):
         driver = None
         try:
-            # 1. Configurar Selenium para conectarse al navegador YA ABIERTO
             self.log("Conectando a la sesión del navegador existente (Puerto 9222)...")
-            
             edge_options = Options()
-            # ESTA ES LA CLAVE: Decirle a Selenium que no abra ventana, sino que use la existente
             edge_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-            
-            # Inicializamos el driver conectando al proceso existente
             driver = webdriver.Edge(options=edge_options)
-            
             self.log("¡Conexión exitosa con el navegador!")
 
-            # 2. Preparar datos
             col_name = self.column_var.get()
             selector = self.selector_var.get()
             delay = self.delay_var.get()
@@ -196,34 +174,48 @@ class AutomationApp:
             start_index = max(0, start_row - 2)
             data_subset = self.df.iloc[start_index:]
 
-            # 3. Bucle de automatización
             for index, row in data_subset.iterrows():
-                if not self.is_running: break # Por si implementas un botón de Stop
+                if not self.is_running: break 
                 
                 excel_row = index + 2
-                valor = str(row[col_name]) # Asegurar que sea string
+                valor = str(row[col_name]) 
                 
                 try:
-                    self.log(f"Fila {excel_row}: Buscando '{selector}'...")
+                    self.log(f"Fila {excel_row}: Insertando '{valor}'...")
                     
-                    # Espera explicita para asegurar que el elemento existe
+                    # 1. Buscar elemento
                     input_element = WebDriverWait(driver, 10).until(
                         EC.presence_of_element_located((By.CSS_SELECTOR, selector))
                     )
                     
-                    # Acciones: Limpiar, Escribir, Enter (opcional)
+                    # --- LÓGICA MODIFICADA ---
+                    
+                    # 2. Limpiar (por seguridad antes de escribir)
                     input_element.clear()
+                    
+                    # 3. Escribir valor
                     input_element.send_keys(valor)
                     
-                    # Opcional: Si necesitas dar ENTER
-                    # from selenium.webdriver.common.keys import Keys
-                    # input_element.send_keys(Keys.ENTER)
+                    # 4. Dar ENTER
+                    input_element.send_keys(Keys.ENTER)
                     
-                    self.log(f"--> Dato '{valor}' insertado correctamente.")
+                    # 5. Esperar un momento (vital para que el ENTER procese)
+                    time.sleep(0.5) 
+                    
+                    # 6. Limpiar el campo DESPUÉS del enter (si la página lo permite)
+                    # Usamos try/except porque si el ENTER recarga la página, 
+                    # el 'input_element' viejo dará error (StaleElementReference).
+                    try:
+                        input_element.clear()
+                    except:
+                        # Si falla, probablemente la página cambió o recargó, 
+                        # así que no pasa nada, se buscará de nuevo en la sgte vuelta.
+                        pass 
+
+                    self.log(f"--> OK.")
                     
                 except Exception as e_row:
                     self.log(f"ERROR en fila {excel_row}: {str(e_row)}")
-                    # Opcional: detener o continuar
                 
                 time.sleep(delay)
 
@@ -233,15 +225,13 @@ class AutomationApp:
         except Exception as e:
             self.log(f"ERROR CRÍTICO: {str(e)}")
             if "Connection refused" in str(e):
-                messagebox.showerror("Error de Conexión", "No se pudo conectar a Edge.\n\n¿Ejecutaste el Paso 0 (Abrir Edge en Modo Seguro)?")
+                messagebox.showerror("Error de Conexión", "No se pudo conectar a Edge. ¿Ejecutaste el Paso 0?")
             else:
                 messagebox.showerror("Error", str(e))
         
         finally:
             self.is_running = False
             self.btn_run.config(state="normal")
-            # NO cerramos el driver con driver.quit() porque cerraría la ventana del usuario.
-            # Solo desconectamos si fuera necesario, pero dejarlo así está bien para RPA asistido.
 
 if __name__ == "__main__":
     root = tk.Tk()
